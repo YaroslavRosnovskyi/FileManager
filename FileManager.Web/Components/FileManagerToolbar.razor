@@ -1,0 +1,161 @@
+@using FileManager.Web.ViewModels
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Files</h2>
+    <button class="btn btn-outline-secondary" @onclick="OnLogout">Logout</button>
+</div>
+
+<div id="dropZone" class="file-drop-zone mb-3" @ondragenter:preventDefault @ondragover:preventDefault>
+    <i class="bi bi-cloud-upload"></i>
+    <p>Drag and drop files here, or click to upload</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="btn-group me-2">
+                    <button class="btn btn-sm btn-primary" @onclick="OnUpload">
+                        <i class="bi bi-upload"></i> Upload
+                    </button>
+                    <button class="btn btn-sm btn-secondary" @onclick="OnDownload" disabled="@(State.SelectedFile == null)">
+                        <i class="bi bi-download"></i> Download
+                    </button>
+                    <button class="btn btn-sm btn-danger" @onclick="OnDelete" disabled="@(State.SelectedFile == null)">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+                <button class="btn btn-sm btn-info me-2" @onclick="OnShowInfo" disabled="@(State.SelectedFile == null)">
+                    <i class="bi bi-info-circle"></i> Info
+                </button>
+                <div class="dropdown d-inline-block position-relative">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="ToggleColumnsDropdown" @onclick:stopPropagation="true">
+                        <i class="bi bi-columns"></i> Columns
+                        <i class="bi @(showColumnsDropdown ? "bi-chevron-up" : "bi-chevron-down") ms-1"></i>
+                    </button>
+                    @if (showColumnsDropdown)
+                    {
+                        <div class="dropdown-menu show position-absolute" style="top: 100%; left: 0; z-index: 1000; min-width: 200px;">
+                            @foreach (var column in State.VisibleColumns.Keys)
+                            {
+                                <div class="dropdown-item px-3 py-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col@column" 
+                                               checked="@State.VisibleColumns[column]" 
+                                               @onchange="e => HandleToggleColumn(column, e.Value)" 
+                                               @onclick:stopPropagation="true" />
+                                        <label class="form-check-label" for="col@column" @onclick:stopPropagation="true">
+                                            @GetColumnDisplayName(column)
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex">
+                    <select class="form-select form-select-sm me-2" value="@State.SelectedFileTypeFilter" @onchange="HandleFilterTypeChanged">
+                        @foreach (var filter in State.FileTypeFilters)
+                        {
+                            <option value="@filter">@filter</option>
+                        }
+                    </select>
+                    <select class="form-select form-select-sm me-2" value="@State.SelectedSortOption" @onchange="HandleSortOptionChanged">
+                        @foreach (var option in State.SortOptions)
+                        {
+                            <option value="@option">@GetSortDisplayName(option)</option>
+                        }
+                    </select>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="sortAscending" checked="@State.SortAscending" @onchange="HandleSortAscendingChanged">
+                        <label class="form-check-label" for="sortAscending">Asc</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public FileManagerState State { get; set; } = null!;
+    [Parameter] public EventCallback OnLogout { get; set; }
+    [Parameter] public EventCallback OnUpload { get; set; }
+    [Parameter] public EventCallback OnDownload { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnShowInfo { get; set; }
+    [Parameter] public EventCallback<string> OnToggleColumn { get; set; }
+    [Parameter] public EventCallback OnFilterChanged { get; set; }
+    [Parameter] public EventCallback OnSortChanged { get; set; }
+
+    private bool showColumnsDropdown = false;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+    }
+
+    private void ToggleColumnsDropdown()
+    {
+        showColumnsDropdown = !showColumnsDropdown;
+    }
+
+    public void CloseDropdowns()
+    {
+        if (showColumnsDropdown)
+        {
+            showColumnsDropdown = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleToggleColumn(string columnName, object? value)
+    {
+        if (value is bool isVisible && State.VisibleColumns.ContainsKey(columnName))
+        {
+            State.VisibleColumns[columnName] = isVisible;
+        }
+        await OnToggleColumn.InvokeAsync(columnName);
+    }
+
+    private async Task HandleFilterTypeChanged(ChangeEventArgs e)
+    {
+        State.SelectedFileTypeFilter = e.Value?.ToString() ?? "All Files";
+        await OnFilterChanged.InvokeAsync();
+        showColumnsDropdown = false;
+    }
+
+    private async Task HandleSortOptionChanged(ChangeEventArgs e)
+    {
+        State.SelectedSortOption = e.Value?.ToString() ?? "name";
+        await OnSortChanged.InvokeAsync();
+        showColumnsDropdown = false;
+    }
+
+    private async Task HandleSortAscendingChanged(ChangeEventArgs e)
+    {
+        State.SortAscending = e.Value is bool b && b;
+        await OnSortChanged.InvokeAsync();
+        showColumnsDropdown = false;
+    }
+
+    private string GetColumnDisplayName(string columnName) => columnName switch
+    {
+        "CreatedAt" => "Created At",
+        "ModifiedAt" => "Modified At", 
+        "CreatedBy" => "Created By",
+        "ModifiedBy" => "Modified By",
+        _ => columnName
+    };
+
+    private string GetSortDisplayName(string sortOption) => sortOption switch
+    {
+        "createdat" => "Created At",
+        "modifiedat" => "Modified At",
+        "createdby" => "Created By", 
+        "modifiedby" => "Modified By",
+        "size" => "Size",
+        _ => "Name"
+    };
+}

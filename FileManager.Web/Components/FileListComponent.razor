@@ -1,0 +1,215 @@
+@using FileManager.Web.ViewModels
+@using FileManager.Web.Services
+@using FileManager.Core.Models
+@inject IJSRuntime JSRuntime
+
+<div class="card-body">
+    @if (State.IsOperationInProgress)
+    {
+        <div class="text-center p-3">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">@State.StatusMessage</p>
+            @if (State.ProgressValue > 0)
+            {
+                <div class="progress">
+                    <div class="progress-bar" role="progressbar" style="width: @(State.ProgressValue)%">@State.ProgressValue%</div>
+                </div>
+            }
+        </div>
+    }
+    else if (State.Files.Count == 0)
+    {
+        <div class="text-center p-3">
+            <p>No files found.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        @if(State.VisibleColumns["Size"])
+                        {
+                            <th>Size</th>
+                        }
+                        @if(State.VisibleColumns["Type"])
+                        {
+                            <th>Type</th>
+                        }
+                        @if(State.VisibleColumns["CreatedAt"])
+                        {
+                            <th>Created At</th>
+                        }
+                        @if(State.VisibleColumns["ModifiedAt"])
+                        {
+                            <th>Modified At</th>
+                        }
+                        @if(State.VisibleColumns["CreatedBy"])
+                        {
+                            <th>Created By</th>
+                        }
+                        @if(State.VisibleColumns["ModifiedBy"])
+                        {
+                            <th>Modified By</th>
+                        }
+                        @if(State.VisibleColumns["Actions"])
+                        {
+                            <th>Actions</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var file in State.Files)
+                    {
+                        <tr id="file-row-@file.Id" 
+                            class="@(State.SelectedFile?.Id == file.Id ? "table-primary" : "") file-row" 
+                            data-file-row="true"
+                            data-file-name="@file.Name"
+                            data-file-id="@file.Id"
+                            draggable="true"
+                            @onclick="() => HandleFileSelect(file)"
+                            @ondragstart="@((DragEventArgs e) => HandleDragStart(e, file))"
+                            @ondragend="@((DragEventArgs e) => HandleDragEnd(e, file))"
+                            style="cursor: grab;">
+                            <td>
+                                <i class="bi @FileUtils.GetFileIcon(file.FileType) me-2"></i>
+                                <span title="Drag to download this file">@file.Name</span>
+                            </td>
+                            @if(State.VisibleColumns["Size"])
+                            {
+                                <td>@FileUtils.FormatFileSize(file.Size)</td>
+                            }
+                            @if(State.VisibleColumns["Type"])
+                            {
+                                <td>@file.FileType</td>
+                            }
+                            @if(State.VisibleColumns["CreatedAt"])
+                            {
+                                <td>@file.CreatedAt.ToLocalTime().ToString("g")</td>
+                            }
+                            @if(State.VisibleColumns["ModifiedAt"])
+                            {
+                                <td>@file.ModifiedAt.ToLocalTime().ToString("g")</td>
+                            }
+                            @if(State.VisibleColumns["CreatedBy"])
+                            {
+                                <td>@file.CreatedBy</td>
+                            }
+                            @if(State.VisibleColumns["ModifiedBy"])
+                            {
+                                <td>@file.ModifiedBy</td>
+                            }
+                            @if(State.VisibleColumns["Actions"])
+                            {
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-secondary" @onclick="() => HandleFileDownload(file)" @onclick:stopPropagation="true">
+                                            <i class="bi bi-download"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" @onclick="() => HandleFileDelete(file)" @onclick:stopPropagation="true">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+<div class="card-footer">
+    <div class="d-flex justify-content-between">
+        <span>@State.StatusMessage</span>
+        <span>@State.Files.Count files - <small class="text-muted">Drag files to download them</small></span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public FileManagerState State { get; set; } = null!;
+    [Parameter] public EventCallback<FileItem> OnFileSelect { get; set; }
+    [Parameter] public EventCallback<FileItem> OnFileDownload { get; set; }
+    [Parameter] public EventCallback<FileItem> OnFileDelete { get; set; }
+    [Parameter] public EventCallback<string> OnGetFileForDragOut { get; set; }
+
+    private async Task HandleFileSelect(FileItem file)
+    {
+        await OnFileSelect.InvokeAsync(file);
+    }
+
+    private async Task HandleFileDownload(FileItem file)
+    {
+        await OnFileDownload.InvokeAsync(file);
+    }
+
+    private async Task HandleFileDelete(FileItem file)
+    {
+        await OnFileDelete.InvokeAsync(file);
+    }
+
+    private async Task HandleDragStart(DragEventArgs e, FileItem file)
+    {
+        try
+        {
+            await OnGetFileForDragOut.InvokeAsync(file.Id);
+            
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                event.dataTransfer.effectAllowed = 'copy';
+                event.dataTransfer.setData('text/plain', '{file.Name}');
+                event.dataTransfer.setData('application/octet-stream', '{file.Id}');
+            ");
+
+            Console.WriteLine($"Drag started for file: {file.Name}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in drag start: {ex.Message}");
+        }
+    }
+
+    private void HandleDragEnd(DragEventArgs e, FileItem file)
+    {
+        Console.WriteLine($"Drag ended for file: {file.Name}");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || State.Files.Count > 0)
+        {
+            try
+            {
+                var dotNetRef = DotNetObjectReference.Create(this);
+                await JSRuntime.InvokeVoidAsync("enableAllFilesDragOut", dotNetRef);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error enabling drag-out: {ex.Message}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task<object> GetFileForDragOut(string fileId)
+    {
+        try
+        {
+            await OnGetFileForDragOut.InvokeAsync(fileId);
+            
+            return new { success = true };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting file for drag-out: {ex.Message}");
+            return new { success = false, error = ex.Message };
+        }
+    }
+
+    public void Dispose()
+    {
+    }
+}

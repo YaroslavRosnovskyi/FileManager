@@ -1,0 +1,189 @@
+syntax = "proto3";
+
+option csharp_namespace = "FileManager.Proto";
+
+package filemanager;
+
+service FileService {
+    rpc Login (LoginRequest) returns (LoginResponse);
+  rpc Logout (LogoutRequest) returns (LogoutResponse);
+  
+  rpc ListFiles (ListFilesRequest) returns (ListFilesResponse);
+  rpc CheckFileConflict (CheckFileConflictRequest) returns (CheckFileConflictResponse);
+  rpc UploadFile (stream FileUploadRequest) returns (FileUploadResponse);
+  rpc DownloadFile (FileDownloadRequest) returns (stream FileDownloadResponse);
+  rpc DeleteFile (DeleteFileRequest) returns (DeleteFileResponse);
+  
+  rpc SynchronizeFolder (SyncFolderRequest) returns (stream SyncFolderResponse);
+  
+  rpc GetSyncFileList (GetSyncFileListRequest) returns (GetSyncFileListResponse);
+  rpc SyncUploadFile (stream SyncFileUploadRequest) returns (SyncFileUploadResponse);
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  bool success = 1;
+  string token = 2;
+  string error_message = 3;
+}
+
+message LogoutRequest {
+  string token = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message ListFilesRequest {
+  string token = 1;
+  string folder_path = 2;
+  string file_type_filter = 3;
+  string sort_by = 4;
+  bool ascending = 5;
+}
+
+message FileInfo {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  int64 size = 4;
+  string file_type = 5;
+  string created_at = 6;
+  string modified_at = 7;
+  string created_by = 8;
+  string modified_by = 9;
+}
+
+message ListFilesResponse {
+  repeated FileInfo files = 1;
+}
+
+message CheckFileConflictRequest {
+  string token = 1;
+  string file_name = 2;
+  string folder_path = 3;
+  int64 file_size = 4;
+}
+
+message ConflictingFile {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  int64 size = 4;
+  string file_type = 5;
+  string created_at = 6;
+  string modified_at = 7;
+  string created_by = 8;
+  string modified_by = 9;
+}
+
+message CheckFileConflictResponse {
+  bool has_conflict = 1;
+  repeated ConflictingFile conflicting_files = 2;
+  string error_message = 3;
+}
+
+message FileUploadRequest {
+  oneof data {
+    FileMetadata metadata = 1;
+    bytes chunk_data = 2;
+  }
+  bool overwrite_existing = 3;
+  string overwrite_file_id = 4;
+}
+
+message FileMetadata {
+  string token = 1;
+  string file_name = 2;
+  string folder_path = 3;
+  int64 total_size = 4;
+}
+
+message FileUploadResponse {
+  bool success = 1;
+  string file_id = 2;
+  string error_message = 3;
+}
+
+message FileDownloadRequest {
+  string token = 1;
+  string file_id = 2;
+}
+
+message FileDownloadResponse {
+  oneof data {
+    FileMetadata metadata = 1;
+    bytes chunk_data = 2;
+  }
+}
+
+message DeleteFileRequest {
+  string token = 1;
+  string file_id = 2;
+}
+
+message DeleteFileResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message SyncFolderRequest {
+  string token = 1;
+  string local_folder_path = 2;
+  string remote_folder_path = 3;
+}
+
+message SyncFolderResponse {
+  enum SyncStatus {
+    SYNCING = 0;
+    COMPLETED = 1;
+    FAILED = 2;
+  }
+  
+  SyncStatus status = 1;
+  string message = 2;
+  int32 files_processed = 3;
+  int32 files_synced = 4;
+  int32 total_files = 5;
+}
+
+message GetSyncFileListRequest {
+  string token = 1;
+  string remote_folder_path = 2;
+}
+
+message SyncFileInfo {
+  string name = 1;
+  string path = 2;
+  int64 size = 3;
+  string modified_at = 4;   string file_id = 5;
+}
+
+message GetSyncFileListResponse {
+  repeated SyncFileInfo files = 1;
+}
+
+message SyncFileUploadRequest {
+  oneof data {
+    SyncFileMetadata metadata = 1;
+    bytes chunk_data = 2;
+  }
+}
+
+message SyncFileMetadata {
+  string token = 1;
+  string file_name = 2;
+  string folder_path = 3;
+  int64 total_size = 4;
+  string local_modified_at = 5; }
+
+message SyncFileUploadResponse {
+  bool success = 1;
+  string file_id = 2;
+  string error_message = 3;
+}

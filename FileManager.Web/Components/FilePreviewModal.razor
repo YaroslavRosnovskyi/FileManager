@@ -1,0 +1,103 @@
+@using FileManager.Web.ViewModels
+@using FileManager.Web.Services
+@using FileManager.Core.Models
+
+@if (State.ShowPreview && State.PreviewFile != null)
+{
+    <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content file-preview-modal">
+                <div class="modal-header">
+                    <div class="d-flex flex-column w-100">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="modal-title mb-0">@State.PreviewFile.Name</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" @onclick="() => OnDownload.InvokeAsync(State.PreviewFile)">
+                                    <i class="bi bi-download"></i> Download
+                                </button>
+                                <button class="btn btn-outline-secondary" @onclick="OnClose">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <small class="text-muted mt-1">
+                            <span class="me-3"><strong>Type:</strong> @State.PreviewFile.FileType</span>
+                            <span class="me-3"><strong>Size:</strong> @FileUtils.FormatFileSize(State.PreviewFile.Size)</span>
+                            <span class="me-3"><strong>Created:</strong> @State.PreviewFile.CreatedAt.ToLocalTime().ToString("g")</span>
+                            <span class="me-3"><strong>Modified:</strong> @State.PreviewFile.ModifiedAt.ToLocalTime().ToString("g")</span>
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="nav nav-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link @(State.PreviewActiveTab == "content" ? "active" : string.Empty)" 
+                                    @onclick='() => OnTabChange("content")' type="button" role="tab">Content</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link @(State.PreviewActiveTab == "properties" ? "active" : string.Empty)" 
+                                    @onclick='() => OnTabChange("properties")' type="button" role="tab">Properties</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content p-3" style="min-height:480px;">
+                        @if (State.PreviewActiveTab == "content")
+                        {
+                            @if (FileUtils.IsImageFile(State.PreviewFile.FileType) && !string.IsNullOrEmpty(State.PreviewDataUrl))
+                            {
+                                <div class="text-center h-100 d-flex flex-column justify-content-center align-items-center">
+                                    <img src="@State.PreviewDataUrl" class="img-fluid file-preview" style="max-height:440px;" alt="@State.PreviewFile.Name" />
+                                </div>
+                            }
+                            else if (FileUtils.IsTextFile(State.PreviewFile.FileType) && !string.IsNullOrEmpty(State.PreviewText))
+                            {
+                                <div class="file-preview-text border rounded h-100" style="white-space:pre; font-family:Consolas,monospace; overflow:auto; max-height:440px;">
+                                    @State.PreviewText
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="h-100 d-flex flex-column justify-content-center align-items-center text-muted">
+                                    <i class="bi @FileUtils.GetFileIcon(State.PreviewFile.FileType)" style="font-size:4rem;"></i>
+                                    <p class="mt-3">No preview available for this file type.</p>
+                                </div>
+                            }
+                        }
+                        else if (State.PreviewActiveTab == "properties")
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered w-auto">
+                                    <tbody>
+                                        <tr><th class="bg-light">Name</th><td>@State.PreviewFile.Name</td></tr>
+                                        <tr><th class="bg-light">Type</th><td>@State.PreviewFile.FileType</td></tr>
+                                        <tr><th class="bg-light">Size</th><td>@FileUtils.FormatFileSize(State.PreviewFile.Size)</td></tr>
+                                        <tr><th class="bg-light">Path</th><td>@State.PreviewFile.Path</td></tr>
+                                        <tr><th class="bg-light">Created</th><td>@State.PreviewFile.CreatedAt.ToLocalTime().ToString("F")</td></tr>
+                                        <tr><th class="bg-light">Modified</th><td>@State.PreviewFile.ModifiedAt.ToLocalTime().ToString("F")</td></tr>
+                                        <tr><th class="bg-light">Created By</th><td>@State.PreviewFile.CreatedBy</td></tr>
+                                        <tr><th class="bg-light">Modified By</th><td>@State.PreviewFile.ModifiedBy</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <span class="text-muted small me-auto">@State.StatusMessage</span>
+                    <button class="btn btn-secondary btn-sm" @onclick="OnClose">Close</button>
+                    <button class="btn btn-primary btn-sm" @onclick="() => OnDownload.InvokeAsync(State.PreviewFile)">Download</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public FileManagerState State { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<FileItem> OnDownload { get; set; }
+
+    private void OnTabChange(string tab)
+    {
+        State.PreviewActiveTab = tab;
+    }
+}

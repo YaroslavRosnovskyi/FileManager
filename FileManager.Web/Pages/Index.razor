@@ -1,0 +1,856 @@
+@page "/"
+@using FileManager.Web.Services
+@using FileManager.Web.ViewModels
+@using FileManager.Web.Components
+@using FileManager.Core.Models
+@inject IFileManagerService FileService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<PageTitle>File Manager</PageTitle>
+
+<div class="container">
+    @if (!_state.IsLoggedIn)
+    {
+        <LoginComponent State="_state" OnLogin="HandleLoginAsync" />
+    }
+    else
+    {
+        <div class="row mt-3">
+            <div class="col">
+                <FileManagerToolbar State="_state" 
+                                    OnLogout="HandleLogoutAsync"
+                                    OnUpload="HandleUploadAsync"
+                                    OnDownload="HandleDownloadSelectedAsync"
+                                    OnDelete="HandleDeleteSelectedAsync"
+                                    OnShowInfo="HandleShowInfoAsync"
+                                    OnToggleColumn="HandleToggleColumnAsync"
+                                    OnFilterChanged="HandleFiltersChangedAsync"
+                                    OnSortChanged="HandleFiltersChangedAsync"
+                                    @ref="toolbarComponent" />
+                
+                <FileListComponent State="_state"
+                                   OnFileSelect="HandleFileSelectAsync"
+                                   OnFileDownload="HandleDownloadFileAsync"
+                                   OnFileDelete="HandleDeleteFileAsync"
+                                   OnGetFileForDragOut="HandleGetFileForDragOutAsync" />
+            </div>
+        </div>
+    }
+</div>
+
+<FilePreviewModal State="_state" OnClose="HandleClosePreviewAsync" OnDownload="HandleDownloadFileAsync" />
+<FileInfoModal State="_state" OnClose="HandleCloseInfoAsync" />
+<FileConflictModal Show="_showConflictModal" 
+                   FileName="@_conflictFileName" 
+                   FileSize="@_conflictFileSize"
+                   ConflictingFiles="@_conflictingFiles"
+                   OnResult="HandleConflictResult" />
+
+@code {
+    private readonly FileManagerState _state = new();
+    private DotNetObjectReference<Index>? _dotNetObjectReference;
+    private FileManagerToolbar? toolbarComponent;
+
+    private readonly Dictionary<string, ChunkedFileUpload> _activeUploads = new();
+
+    private bool _showConflictModal = false;
+    private string _conflictFileName = string.Empty;
+    private long _conflictFileSize = 0;
+    private List<FileItem> _conflictingFiles = new();
+    private TaskCompletionSource<FileConflictModal.FileConflictResult>? _conflictTaskSource;
+
+    protected override void OnInitialized()
+    {
+        _dotNetObjectReference = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await InitializeDragAndDropAsync();
+                await InitializeGlobalClickHandlerAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error initializing functionality: {ex.Message}");
+                _state.StatusMessage = "Warning: Some functionality may not work properly.";
+                StateHasChanged();
+            }
+        }
+        else if (_state.IsLoggedIn)
+        {
+            try
+            {
+                await InitializeDragAndDropAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error re-initializing drag and drop: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task InitializeDragAndDropAsync()
+    {
+        try
+        {
+            var dragDropInitialized = await JSRuntime.InvokeAsync<bool>("initializeDragAndDrop", "dropZone", _dotNetObjectReference);
+            Console.WriteLine($"Drag and drop initialized: {dragDropInitialized}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing drag and drop: {ex.Message}");
+        }
+    }
+
+    private async Task InitializeGlobalClickHandlerAsync()
+    {
+        try
+        {
+            var clickHandlerInitialized = await JSRuntime.InvokeAsync<bool>("initializeGlobalClickHandler", _dotNetObjectReference);
+            Console.WriteLine($"Global click handler initialized: {clickHandlerInitialized}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing global click handler: {ex.Message}");
+        }
+    }
+
+    #region Authentication
+
+    private async Task HandleLoginAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_state.Username) || string.IsNullOrWhiteSpace(_state.Password))
+        {
+            _state.StatusMessage = "Please enter both username and password.";
+            return;
+        }
+
+        try
+        {
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = "Logging in...";
+            StateHasChanged();
+
+            var success = await FileService.LoginAsync(_state.Username, _state.Password);
+            
+            if (success)
+            {
+                _state.IsLoggedIn = true;
+                _state.StatusMessage = "Logged in successfully";
+                await RefreshFilesAsync();
+            }
+            else
+            {
+                _state.StatusMessage = "Login failed. Please check your credentials.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error during login: {ex.Message}";
+        }
+        finally
+        {
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleLogoutAsync()
+    {
+        try
+        {
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = "Logging out...";
+            StateHasChanged();
+
+            await FileService.LogoutAsync();
+            _state.Reset();
+            _state.StatusMessage = "Logged out successfully";
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error during logout: {ex.Message}";
+            _state.Reset();
+        }
+        finally
+        {
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region File Operations
+
+    private async Task RefreshFilesAsync()
+    {
+        if (!_state.IsLoggedIn) return;
+
+        try
+        {
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = "Loading files...";
+            StateHasChanged();
+
+            string fileTypeFilter = _state.SelectedFileTypeFilter == "All Files" ? string.Empty : _state.SelectedFileTypeFilter;
+            
+            _state.Files = await FileService.GetFilesAsync("/", fileTypeFilter, _state.SelectedSortOption, _state.SortAscending);
+            _state.StatusMessage = $"Loaded {_state.Files.Count} files";
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error loading files: {ex.Message}";
+        }
+        finally
+        {
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleUploadAsync()
+    {
+        try
+        {
+            _state.StatusMessage = "Selecting file...";
+            StateHasChanged();
+
+            var fileMetadata = await JSRuntime.InvokeAsync<FileMetadataModel>("selectFileSimple");
+            if (fileMetadata == null)
+            {
+                _state.StatusMessage = "No file selected";
+                StateHasChanged();
+                return;
+            }
+
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = $"Reading {fileMetadata.Name}...";
+            StateHasChanged();
+
+            var fileContent = await JSRuntime.InvokeAsync<byte[]>("readSelectedFileContent");
+            if (fileContent == null || fileContent.Length == 0)
+            {
+                _state.StatusMessage = $"Error: Could not read file content for {fileMetadata.Name}";
+                _state.IsOperationInProgress = false;
+                StateHasChanged();
+                return;
+            }
+
+            var (hasConflict, conflictingFiles) = await FileService.CheckFileConflictAsync(fileMetadata.Name, fileMetadata.Size, "/");
+            
+            bool overwriteExisting = false;
+            string? overwriteFileId = null;
+
+            if (hasConflict)
+            {
+                var conflictResult = await ShowConflictDialogAsync(fileMetadata.Name, fileMetadata.Size, conflictingFiles);
+                
+                if (conflictResult.Action == FileConflictModal.ConflictAction.Cancel)
+                {
+                    _state.StatusMessage = "Upload cancelled";
+                    _state.IsOperationInProgress = false;
+                    StateHasChanged();
+                    return;
+                }
+                
+                if (conflictResult.Action == FileConflictModal.ConflictAction.Overwrite)
+                {
+                    overwriteExisting = true;
+                    overwriteFileId = conflictResult.OverwriteFileId;
+                }
+                else if (conflictResult.Action == FileConflictModal.ConflictAction.KeepBoth)
+                {
+                    var extension = Path.GetExtension(fileMetadata.Name);
+                    var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileMetadata.Name);
+                    var counter = 1;
+                    
+                    do
+                    {
+                        var newName = $"{nameWithoutExtension} ({counter}){extension}";
+                        var (stillHasConflict, _) = await FileService.CheckFileConflictAsync(newName, fileMetadata.Size, "/");
+                        if (!stillHasConflict)
+                        {
+                            fileMetadata.Name = newName;
+                            break;
+                        }
+                        counter++;
+                    } while (counter < 100);
+                }
+            }
+
+            var progress = new Progress<int>(value =>
+            {
+                _state.ProgressValue = value;
+                _state.StatusMessage = $"Uploading {fileMetadata.Name}: {value}%";
+                StateHasChanged();
+            });
+
+            var success = await FileService.UploadFileAsync(fileMetadata.Name, fileContent, "/", progress, overwriteExisting, overwriteFileId);
+            
+            if (success)
+            {
+                _state.StatusMessage = $"File {fileMetadata.Name} uploaded successfully";
+                await RefreshFilesAsync();
+            }
+            else
+            {
+                _state.StatusMessage = "Upload failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error uploading file: {ex.Message}";
+        }
+        finally
+        {
+            _state.ProgressValue = 0;
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<FileConflictModal.FileConflictResult> ShowConflictDialogAsync(string fileName, long fileSize, List<FileItem> conflictingFiles)
+    {
+        _conflictFileName = fileName;
+        _conflictFileSize = fileSize;
+        _conflictingFiles = conflictingFiles;
+        _conflictTaskSource = new TaskCompletionSource<FileConflictModal.FileConflictResult>();
+        _showConflictModal = true;
+        StateHasChanged();
+
+        return await _conflictTaskSource.Task;
+    }
+
+    private async Task HandleConflictResult(FileConflictModal.FileConflictResult result)
+    {
+        _showConflictModal = false;
+        StateHasChanged();
+        
+        _conflictTaskSource?.SetResult(result);
+    }
+
+    private async Task HandleDownloadSelectedAsync()
+    {
+        if (_state.SelectedFile != null)
+        {
+            await HandleDownloadFileAsync(_state.SelectedFile);
+        }
+    }
+
+    private async Task HandleDownloadFileAsync(FileItem file)
+    {
+        try
+        {
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = $"Downloading {file.Name}...";
+            StateHasChanged();
+
+            var progress = new Progress<int>(value =>
+            {
+                _state.ProgressValue = value;
+                StateHasChanged();
+            });
+
+            var (success, content) = await FileService.DownloadFileAsync(file.Id, progress);
+            
+            if (success)
+            {
+                var contentType = FileUtils.GetContentType(file.FileType);
+                var downloadSuccess = await JSRuntime.InvokeAsync<bool>("saveFile", file.Name, contentType, content);
+                
+                _state.StatusMessage = downloadSuccess 
+                    ? $"File {file.Name} downloaded successfully"
+                    : "Download failed";
+            }
+            else
+            {
+                _state.StatusMessage = "Download failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error downloading file: {ex.Message}";
+        }
+        finally
+        {
+            _state.ProgressValue = 0;
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleDeleteSelectedAsync()
+    {
+        if (_state.SelectedFile != null)
+        {
+            await HandleDeleteFileAsync(_state.SelectedFile);
+        }
+    }
+
+    private async Task HandleDeleteFileAsync(FileItem file)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{file.Name}'?");
+        if (!confirmed) return;
+
+        try
+        {
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = $"Deleting {file.Name}...";
+            StateHasChanged();
+
+            var success = await FileService.DeleteFileAsync(file.Id);
+            
+            if (success)
+            {
+                _state.StatusMessage = $"File '{file.Name}' deleted successfully";
+                if (_state.SelectedFile?.Id == file.Id)
+                {
+                    _state.SelectedFile = null;
+                }
+                await RefreshFilesAsync();
+            }
+            else
+            {
+                _state.StatusMessage = "Delete failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error deleting file: {ex.Message}";
+        }
+        finally
+        {
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region File Selection and Preview
+
+    private async Task HandleFileSelectAsync(FileItem file)
+    {
+        if (_state.SelectedFile?.Id == file.Id)
+        {
+            await HandlePreviewFileAsync(file);
+        }
+        else
+        {
+            _state.SelectedFile = file;
+        }
+    }
+
+    private async Task HandlePreviewFileAsync(FileItem file)
+    {
+        try
+        {
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = $"Loading preview for {file.Name}...";
+            StateHasChanged();
+
+            var progress = new Progress<int>(value =>
+            {
+                _state.ProgressValue = value;
+                StateHasChanged();
+            });
+
+            var (success, content) = await FileService.PreviewFileAsync(file.Id, progress);
+            
+            if (success)
+            {
+                _state.PreviewFile = file;
+                _state.PreviewDataUrl = null;
+                _state.PreviewText = null;
+
+                if (FileUtils.IsImageFile(file.FileType))
+                {
+                    var base64 = Convert.ToBase64String(content);
+                    var mimeType = FileUtils.GetMimeType(file.FileType);
+                    _state.PreviewDataUrl = $"data:{mimeType};base64,{base64}";
+                }
+                else if (FileUtils.IsTextFile(file.FileType))
+                {
+                    _state.PreviewText = System.Text.Encoding.UTF8.GetString(content);
+                }
+
+                _state.PreviewActiveTab = "content";
+                _state.ShowPreview = true;
+                _state.StatusMessage = $"Preview loaded for {file.Name}";
+            }
+            else
+            {
+                _state.StatusMessage = "Failed to load preview";
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error loading preview: {ex.Message}";
+        }
+        finally
+        {
+            _state.ProgressValue = 0;
+            _state.IsOperationInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region UI Event Handlers
+
+    private async Task HandleFiltersChangedAsync()
+    {
+        await RefreshFilesAsync();
+    }
+
+    private Task HandleToggleColumnAsync(string columnName)
+    {
+        return Task.CompletedTask;
+    }
+
+    private Task HandleShowInfoAsync()
+    {
+        _state.ShowInfoModal = true;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleCloseInfoAsync()
+    {
+        _state.ShowInfoModal = false;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleClosePreviewAsync()
+    {
+        _state.ShowPreview = false;
+        _state.PreviewFile = null;
+        _state.PreviewDataUrl = null;
+        _state.PreviewText = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleGetFileForDragOutAsync(string fileId)
+    {
+        if (!_state.IsLoggedIn) return;
+
+        try
+        {
+            _state.StatusMessage = "Preparing file for download...";
+            StateHasChanged();
+
+            var progress = new Progress<int>(value =>
+            {
+                _state.ProgressValue = value;
+                StateHasChanged();
+            });
+
+            var (success, content) = await FileService.DownloadFileAsync(fileId, progress);
+            
+            if (success)
+            {
+                var file = _state.Files.FirstOrDefault(f => f.Id == fileId);
+                if (file != null)
+                {
+                    var contentType = FileUtils.GetContentType(file.FileType);
+                    var contentArray = string.Join(",", content);
+                    
+                    var jsCode = $@"
+                        window._dragOutFileData = {{
+                            content: new Uint8Array([{contentArray}]),
+                            contentType: '{contentType}',
+                            fileName: '{file.Name}'
+                        }};
+                    ";
+                    
+                    await JSRuntime.InvokeVoidAsync("eval", jsCode);
+                    
+                    _state.StatusMessage = $"File {file.Name} ready for drag-out download";
+                }
+            }
+            else
+            {
+                _state.StatusMessage = "Failed to prepare file for download";
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Error preparing file for download: {ex.Message}";
+        }
+        finally
+        {
+            _state.ProgressValue = 0;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region Global Click Handler for Dropdowns
+
+    [JSInvokable]
+    public void CloseAllDropdowns()
+    {
+        toolbarComponent?.CloseDropdowns();
+    }
+
+    #endregion
+
+    #region Drag and Drop Support (JavaScript Interop)
+
+    private class ChunkedFileUpload
+    {
+        public string UploadId { get; set; } = string.Empty;
+        public FileMetadataModel FileInfo { get; set; } = new();
+        public MemoryStream MemoryStream { get; set; } = new();
+        public DateTime StartTime { get; set; }
+    }
+
+    public class FileMetadataModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public long Size { get; set; }
+    }
+
+    public class FileDropData
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public long Size { get; set; }
+        public byte[] Content { get; set; } = Array.Empty<byte>();
+    }
+
+    [JSInvokable]
+    public string StartFileUpload(FileMetadataModel fileInfo)
+    {
+        if (!_state.IsLoggedIn || _state.IsOperationInProgress)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            if (string.IsNullOrEmpty(fileInfo.Name))
+            {
+                _state.StatusMessage = "Invalid file information";
+                StateHasChanged();
+                return string.Empty;
+            }
+
+            string uploadId = Guid.NewGuid().ToString();
+
+            var upload = new ChunkedFileUpload
+            {
+                FileInfo = fileInfo,
+                MemoryStream = new MemoryStream(),
+                UploadId = uploadId,
+                StartTime = DateTime.Now
+            };
+
+            _activeUploads[uploadId] = upload;
+
+            _state.IsOperationInProgress = true;
+            _state.StatusMessage = $"Starting upload for {fileInfo.Name}...";
+            StateHasChanged();
+
+            return uploadId;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting file upload: {ex.Message}");
+            _state.StatusMessage = $"Error starting file upload: {ex.Message}";
+            StateHasChanged();
+            return string.Empty;
+        }
+    }
+
+    [JSInvokable]
+    public int UploadFileChunk(string uploadId, string base64ChunkData, long offset, long totalSize)
+    {
+        try
+        {
+            if (!_activeUploads.TryGetValue(uploadId, out var upload))
+            {
+                Console.WriteLine($"Upload ID not found: {uploadId}");
+                return -1;
+            }
+
+            byte[] chunkBytes;
+            try
+            {
+                chunkBytes = Convert.FromBase64String(base64ChunkData);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error decoding base64 chunk data: {ex.Message}");
+                return -1;
+            }
+
+            upload.MemoryStream.Write(chunkBytes, 0, chunkBytes.Length);
+
+            int progress = totalSize > 0 ? (int)((double)upload.MemoryStream.Length / totalSize * 100) : 0;
+
+            _state.ProgressValue = progress;
+            _state.StatusMessage = $"Uploading {upload.FileInfo.Name}: {progress}% ({FileUtils.FormatFileSize(upload.MemoryStream.Length)}/{FileUtils.FormatFileSize(totalSize)})";
+            StateHasChanged();
+
+            return progress;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error uploading file chunk: {ex.Message}");
+            _state.StatusMessage = $"Error uploading file chunk: {ex.Message}";
+            StateHasChanged();
+            return -1;
+        }
+    }
+
+    [JSInvokable]
+    public async Task<bool> FinishFileUpload(string uploadId)
+    {
+        if (!_activeUploads.TryGetValue(uploadId, out var upload))
+        {
+            Console.WriteLine($"Upload ID not found: {uploadId}");
+            return false;
+        }
+
+        try
+        {
+            _state.StatusMessage = $"Checking for conflicts: {upload.FileInfo.Name}...";
+            StateHasChanged();
+
+            var (hasConflict, conflictingFiles) = await FileService.CheckFileConflictAsync(upload.FileInfo.Name, upload.FileInfo.Size, "/");
+            
+            bool overwriteExisting = false;
+            string? overwriteFileId = null;
+            string finalFileName = upload.FileInfo.Name;
+
+            if (hasConflict)
+            {
+                var conflictResult = await ShowConflictDialogAsync(upload.FileInfo.Name, upload.FileInfo.Size, conflictingFiles);
+                
+                if (conflictResult.Action == FileConflictModal.ConflictAction.Cancel)
+                {
+                    _state.StatusMessage = $"Upload of {upload.FileInfo.Name} was cancelled";
+                    return false;
+                }
+                
+                if (conflictResult.Action == FileConflictModal.ConflictAction.Overwrite)
+                {
+                    overwriteExisting = true;
+                    overwriteFileId = conflictResult.OverwriteFileId;
+                }
+                else if (conflictResult.Action == FileConflictModal.ConflictAction.KeepBoth)
+                {
+                    var extension = Path.GetExtension(upload.FileInfo.Name);
+                    var nameWithoutExtension = Path.GetFileNameWithoutExtension(upload.FileInfo.Name);
+                    var counter = 1;
+                    
+                    do
+                    {
+                        var newName = $"{nameWithoutExtension} ({counter}){extension}";
+                        var (stillHasConflict, _) = await FileService.CheckFileConflictAsync(newName, upload.FileInfo.Size, "/");
+                        if (!stillHasConflict)
+                        {
+                            finalFileName = newName;
+                            break;
+                        }
+                        counter++;
+                    } while (counter < 100);
+                }
+            }
+
+            _state.StatusMessage = $"Finalizing upload for {finalFileName}...";
+            StateHasChanged();
+
+            var fileContent = upload.MemoryStream.ToArray();
+
+            var progress = new Progress<int>(value =>
+            {
+                _state.ProgressValue = value;
+                _state.StatusMessage = $"Uploading {finalFileName}: {value}%";
+                StateHasChanged();
+            });
+
+            var success = await FileService.UploadFileAsync(finalFileName, fileContent, "/", progress, overwriteExisting, overwriteFileId);
+
+            if (success)
+            {
+                _state.StatusMessage = $"File {finalFileName} uploaded successfully";
+                await RefreshFilesAsync();
+                return true;
+            }
+            else
+            {
+                _state.StatusMessage = $"Upload failed for {finalFileName}";
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error finalizing file upload: {ex.Message}");
+            _state.StatusMessage = $"Error finalizing file upload: {ex.Message}";
+            StateHasChanged();
+            return false;
+        }
+        finally
+        {
+            upload.MemoryStream.Dispose();
+            _activeUploads.Remove(uploadId);
+
+            if (_activeUploads.Count == 0)
+            {
+                _state.ProgressValue = 0;
+                _state.IsOperationInProgress = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void CancelFileUpload(string uploadId)
+    {
+        if (_activeUploads.TryGetValue(uploadId, out var upload))
+        {
+            upload.MemoryStream.Dispose();
+            _activeUploads.Remove(uploadId);
+
+            _state.StatusMessage = $"Upload of {upload.FileInfo.Name} was cancelled";
+
+            if (_activeUploads.Count == 0)
+            {
+                _state.ProgressValue = 0;
+                _state.IsOperationInProgress = false;
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleFileDrop(List<FileDropData> files)
+    {
+        _state.StatusMessage = "Processing dropped files...";
+        StateHasChanged();
+    }
+
+    #endregion
+
+    public void Dispose()
+    {
+        foreach (var upload in _activeUploads.Values)
+        {
+            upload.MemoryStream.Dispose();
+        }
+        _activeUploads.Clear();
+
+        _dotNetObjectReference?.Dispose();
+    }
+}

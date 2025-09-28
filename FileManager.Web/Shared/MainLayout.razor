@@ -1,0 +1,25 @@
+﻿@inherits LayoutComponentBase
+
+<PageTitle>FileManager Web</PageTitle>
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <span class="me-auto">FileManager Web</span>
+            <a href="https://github.com/yourusername/filemanager" target="_blank" class="me-3">
+                <i class="bi bi-github"></i> GitHub
+            </a>
+            <a href="https://docs.microsoft.com/aspnet/" target="_blank">
+                <i class="bi bi-question-circle"></i> Help
+            </a>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>

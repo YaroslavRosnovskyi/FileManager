@@ -1,0 +1,93 @@
+<Window x:Class="FileManager.Desktop.FilePreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:FileManager.Desktop"
+        mc:Ignorable="d"
+        Title="File Preview" Height="600" Width="800" WindowStartupLocation="CenterOwner">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header with file info -->
+        <StackPanel Grid.Row="0" Margin="10" Orientation="Vertical">
+            <TextBlock x:Name="FileNameText" FontSize="16" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                <TextBlock Text="Type: " FontWeight="SemiBold"/>
+                <TextBlock x:Name="FileTypeText" Margin="5,0,0,0"/>
+                <TextBlock Text="Size: " FontWeight="SemiBold" Margin="20,0,0,0"/>
+                <TextBlock x:Name="FileSizeText" Margin="5,0,0,0"/>
+                <TextBlock Text="Modified: " FontWeight="SemiBold" Margin="20,0,0,0"/>
+                <TextBlock x:Name="FileModifiedText" Margin="5,0,0,0"/>
+            </StackPanel>
+        </StackPanel>
+        
+        <!-- Content area -->
+        <TabControl Grid.Row="1" Margin="10">
+            <!-- Text content tab -->
+            <TabItem Header="Content" x:Name="ContentTab">
+                <Grid>
+                    <TextBox x:Name="TextContent" IsReadOnly="True" 
+                             FontFamily="Consolas" 
+                             HorizontalScrollBarVisibility="Auto" 
+                             VerticalScrollBarVisibility="Auto"/>
+                    <Image x:Name="ImageContent" Stretch="Uniform" Visibility="Collapsed"/>
+                    <TextBlock x:Name="NoPreviewText" 
+                               Text="No preview available for this file type" 
+                               HorizontalAlignment="Center" 
+                               VerticalAlignment="Center"
+                               FontSize="16"
+                               Visibility="Collapsed"/>
+                </Grid>
+            </TabItem>
+            
+            <!-- Properties tab -->
+            <TabItem Header="Properties">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="PropFileName" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Path:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="PropFilePath" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Type:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="PropFileType" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Size:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="PropFileSize" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Created:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="PropCreatedAt" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Modified:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="5" Grid.Column="1" x:Name="PropModifiedAt" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Created By:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="6" Grid.Column="1" x:Name="PropCreatedBy" Margin="10,5"/>
+                    
+                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Modified By:" FontWeight="SemiBold" Margin="0,5"/>
+                    <TextBlock Grid.Row="7" Grid.Column="1" x:Name="PropModifiedBy" Margin="10,5"/>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

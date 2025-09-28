@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  filemanager-server:
+    build:
+      context: .
+      dockerfile: FileManager.Server/Dockerfile
+    container_name: filemanager-server
+    ports:
+      - "8080:8080"   # HTTP gRPC
+      - "8081:8081"   # HTTPS gRPC-Web
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Docker
+      - ASPNETCORE_URLS=http://+:8080;https://+:8081
+      - ASPNETCORE_HTTPS_PORT=8081
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=MySecretPassword123
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/https/aspnetapp.pfx
+    volumes:
+      - filemanager_storage:/app/Storage
+    networks:
+      - filemanager_network
+
+volumes:
+  filemanager_storage:
+    driver: local
+
+networks:
+  filemanager_network:
+    driver: bridge

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "Local": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "ServerConnection__GrpcUrl": "https://localhost:7121"
+      }
+    },
+    "Docker": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "ServerConnection__GrpcUrl": "https://localhost:8081"
+      }
+    }
+  }
+}

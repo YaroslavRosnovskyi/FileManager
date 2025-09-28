@@ -1,0 +1,129 @@
+﻿<Window x:Class="FileManager.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:FileManager.Desktop"
+        xmlns:converters="clr-namespace:FileManager.Desktop.Converters"
+        xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+        mc:Ignorable="d"
+        Title="File Manager" Height="600" Width="1000">
+    <Window.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <converters:FileSizeConverter x:Key="FileSizeConverter"/>
+        <converters:ColumnVisibilityConverter x:Key="ColumnVisibilityConverter"/>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Login Panel -->
+        <Grid x:Name="LoginPanel" Grid.Row="0" Margin="10" Visibility="{Binding IsLoggedIn, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBlock Grid.Column="0" Text="Username:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Column="1" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" Width="150" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBlock Grid.Column="2" Text="Password:" VerticalAlignment="Center" Margin="10,0,10,0"/>
+            <PasswordBox Grid.Column="3" Name="PasswordBox" Width="150" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <Button Grid.Column="4" Content="Login" Command="{Binding LoginCommand}" Margin="10,0,0,0" Padding="10,5"/>
+        </Grid>
+
+        <!-- Main Toolbar -->
+        <ToolBar Grid.Row="0" Visibility="{Binding IsLoggedIn, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Button Content="Upload" Command="{Binding UploadCommand}" Margin="5"/>
+            <Button Content="Download" Command="{Binding DownloadCommand}" Margin="5"/>
+            <Button Content="Preview" Command="{Binding PreviewCommand}" Margin="5"/>
+            <Button Content="Delete" Command="{Binding DeleteCommand}" Margin="5"/>
+            <Separator/>
+            <Button Content="Sync Folder" Command="{Binding SyncFolderCommand}" Margin="5"/>
+            <Separator/>
+            <ComboBox Width="120" ItemsSource="{Binding FileTypeFilters}" SelectedItem="{Binding SelectedFileTypeFilter}" Margin="5"/>
+            <ComboBox Width="120" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSortOption}" Margin="5"/>
+            <CheckBox Content="Ascending" IsChecked="{Binding SortAscending}" VerticalAlignment="Center" Margin="5"/>
+            <Separator/>
+            <Button Content="Test Columns" Command="{Binding TestColumnCommand}" Margin="5" Background="Orange"/>
+            <Menu Background="Transparent" VerticalAlignment="Center">
+                <MenuItem Header="Columns">
+                    <MenuItem Header="Size" IsCheckable="True" IsChecked="{Binding ShowSizeColumn, Mode=TwoWay}" />
+                    <MenuItem Header="Type" IsCheckable="True" IsChecked="{Binding ShowTypeColumn, Mode=TwoWay}" />
+                    <MenuItem Header="Created At" IsCheckable="True" IsChecked="{Binding ShowCreatedAtColumn, Mode=TwoWay}" />
+                    <MenuItem Header="Modified At" IsCheckable="True" IsChecked="{Binding ShowModifiedAtColumn, Mode=TwoWay}" />
+                    <MenuItem Header="Created By" IsCheckable="True" IsChecked="{Binding ShowCreatedByColumn, Mode=TwoWay}" />
+                    <MenuItem Header="Modified By" IsCheckable="True" IsChecked="{Binding ShowModifiedByColumn, Mode=TwoWay}" />
+                </MenuItem>
+            </Menu>
+            <Separator/>
+            <Button Content="Logout" Command="{Binding LogoutCommand}" Margin="5"/>
+        </ToolBar>
+
+        <!-- File List -->
+        <DataGrid Grid.Row="1" 
+                  x:Name="FilesDataGrid"
+                  ItemsSource="{Binding Files}" 
+                  SelectedItem="{Binding SelectedFile}"
+                  AutoGenerateColumns="False" 
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  CanUserSortColumns="False"
+                  GridLinesVisibility="Horizontal"
+                  AlternatingRowBackground="AliceBlue"
+                  AllowDrop="True"
+                  Drop="FileList_Drop">
+            <i:Interaction.Triggers>
+                <i:EventTrigger EventName="MouseDoubleClick">
+                    <i:InvokeCommandAction Command="{Binding PreviewCommand}" />
+                </i:EventTrigger>
+            </i:Interaction.Triggers>
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="ToolTip" Value="Click and drag to download this file with its original name"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="LightBlue"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200"/>
+                <DataGridTextColumn Header="Size" Binding="{Binding Size, Converter={StaticResource FileSizeConverter}}" Width="100" />
+                <DataGridTextColumn Header="Type" Binding="{Binding FileType}" Width="80" />
+                <DataGridTextColumn Header="Created At" Binding="{Binding CreatedAt}" Width="150" />
+                <DataGridTextColumn Header="Modified At" Binding="{Binding ModifiedAt}" Width="150" />
+                <DataGridTextColumn Header="Created By" Binding="{Binding CreatedBy}" Width="120" />
+                <DataGridTextColumn Header="Modified By" Binding="{Binding ModifiedBy}" Width="120" />
+            </DataGrid.Columns>
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Preview" Command="{Binding PreviewCommand}"/>
+                    <MenuItem Header="Download" Command="{Binding DownloadCommand}"/>
+                    <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="Drag to Download" IsEnabled="False" Foreground="Gray" FontStyle="Italic"/>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+        </DataGrid>
+
+        <!-- Status Bar -->
+        <StatusBar Grid.Row="2">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}"/>
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <ProgressBar Width="200" Height="15" Value="{Binding ProgressValue}" Maximum="100" Visibility="{Binding IsOperationInProgress, Converter={StaticResource BoolToVisibilityConverter}}"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>

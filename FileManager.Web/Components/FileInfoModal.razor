@@ -1,0 +1,63 @@
+@using FileManager.Web.ViewModels
+@using FileManager.Web.Services
+@using FileManager.Core.Models
+
+@if (State.ShowInfoModal && State.SelectedFile != null)
+{
+    <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">File Information</h5>
+                    <button type="button" class="btn-close" @onclick="OnClose"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered">
+                        <tbody>
+                            <tr>
+                                <th>Name</th>
+                                <td>@State.SelectedFile.Name</td>
+                            </tr>
+                            <tr>
+                                <th>Size</th>
+                                <td>@FileUtils.FormatFileSize(State.SelectedFile.Size)</td>
+                            </tr>
+                            <tr>
+                                <th>Type</th>
+                                <td>@State.SelectedFile.FileType</td>
+                            </tr>
+                            <tr>
+                                <th>Path</th>
+                                <td>@State.SelectedFile.Path</td>
+                            </tr>
+                            <tr>
+                                <th>Created</th>
+                                <td>@State.SelectedFile.CreatedAt.ToLocalTime().ToString("g")</td>
+                            </tr>
+                            <tr>
+                                <th>Modified</th>
+                                <td>@State.SelectedFile.ModifiedAt.ToLocalTime().ToString("g")</td>
+                            </tr>
+                            <tr>
+                                <th>Created By</th>
+                                <td>@State.SelectedFile.CreatedBy</td>
+                            </tr>
+                            <tr>
+                                <th>Modified By</th>
+                                <td>@State.SelectedFile.ModifiedBy</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public FileManagerState State { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+}
