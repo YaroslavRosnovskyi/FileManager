@@ -1,16 +1,16 @@
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FileManager.Core.Models;
+using FileManager.Desktop.Services;
 using FileManager.Proto;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Configuration;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Net.Http;
+using System.Windows;
 
 namespace FileManager.Desktop.ViewModels;
 
@@ -19,65 +19,67 @@ public class MainViewModel : ObservableObject
     private readonly FileService.FileServiceClient _client;
     private readonly GrpcChannel _channel;
     private string? _token;
-    
+    private LocalFolderWatcher? _folderWatcher;
+    private string? _watchedFolderPath;
+
     private bool _isLoggedIn;
     public bool IsLoggedIn
     {
         get => _isLoggedIn;
         set => SetProperty(ref _isLoggedIn, value);
     }
-    
+
     private string _username = string.Empty;
     public string Username
     {
         get => _username;
         set => SetProperty(ref _username, value);
     }
-    
+
     private string _password = string.Empty;
     public string Password
     {
         get => _password;
         set => SetProperty(ref _password, value);
     }
-    
+
     private string _statusMessage = "Please log in";
     public string StatusMessage
     {
         get => _statusMessage;
         set => SetProperty(ref _statusMessage, value);
     }
-    
+
     private int _progressValue;
     public int ProgressValue
     {
         get => _progressValue;
         set => SetProperty(ref _progressValue, value);
     }
-    
+
     private bool _isOperationInProgress;
     public bool IsOperationInProgress
     {
         get => _isOperationInProgress;
         set => SetProperty(ref _isOperationInProgress, value);
     }
-    
+
     private FileItem? _selectedFile;
     public FileItem? SelectedFile
     {
         get => _selectedFile;
         set => SetProperty(ref _selectedFile, value);
     }
-    
+
     public ObservableCollection<FileItem> Files { get; } = new();
-    
+
     public ObservableCollection<string> FileTypeFilters { get; } = new()
     {
-        "All Files", 
+        "All Files",
         ".cpp",
         ".png"
     };
-    
+
     private string _selectedFileTypeFilter = "All Files";
     public string SelectedFileTypeFilter
     {
@@ -90,7 +92,7 @@ public class MainViewModel : ObservableObject
             }
         }
     }
-    
+
     public ObservableCollection<string> SortOptions { get; } = new()
     {
         "Name",
@@ -101,7 +103,7 @@ public class MainViewModel : ObservableObject
         "Created By",
         "Modified By"
     };
-    
+
     private string _selectedSortOption = "Name";
     public string SelectedSortOption
     {
@@ -114,7 +116,7 @@ public class MainViewModel : ObservableObject
             }
         }
     }
-    
+
     private bool _sortAscending = true;
     public bool SortAscending
     {
@@ -127,85 +129,85 @@ public class MainViewModel : ObservableObject
             }
         }
     }
-    
+
     private bool _showSizeColumn = true;
     public bool ShowSizeColumn
     {
         get => _showSizeColumn;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref _showSizeColumn, value))
             {
                 StatusMessage = $"Size column: {(value ? "Shown" : "Hidden")}";
             }
         }
     }
-    
+
     private bool _showTypeColumn = true;
     public bool ShowTypeColumn
     {
         get => _showTypeColumn;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref _showTypeColumn, value))
             {
                 StatusMessage = $"Type column: {(value ? "Shown" : "Hidden")}";
             }
         }
     }
-    
+
     private bool _showCreatedAtColumn = true;
     public bool ShowCreatedAtColumn
     {
         get => _showCreatedAtColumn;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref _showCreatedAtColumn, value))
             {
                 StatusMessage = $"Created At column: {(value ? "Shown" : "Hidden")}";
             }
         }
     }
-    
+
     private bool _showModifiedAtColumn = true;
     public bool ShowModifiedAtColumn
     {
         get => _showModifiedAtColumn;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref _showModifiedAtColumn, value))
             {
                 StatusMessage = $"Modified At column: {(value ? "Shown" : "Hidden")}";
             }
         }
     }
-    
+
     private bool _showCreatedByColumn = true;
     public bool ShowCreatedByColumn
     {
         get => _showCreatedByColumn;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref _showCreatedByColumn, value))
             {
                 StatusMessage = $"Created By column: {(value ? "Shown" : "Hidden")}";
             }
         }
     }
-    
+
     private bool _showModifiedByColumn = true;
     public bool ShowModifiedByColumn
     {
         get => _showModifiedByColumn;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref _showModifiedByColumn, value))
             {
                 StatusMessage = $"Modified By column: {(value ? "Shown" : "Hidden")}";
             }
         }
     }
-    
+
     public IRelayCommand LoginCommand { get; }
     public IRelayCommand LogoutCommand { get; }
     public IRelayCommand UploadCommand { get; }
@@ -214,14 +216,14 @@ public class MainViewModel : ObservableObject
     public IRelayCommand SyncFolderCommand { get; }
     public IRelayCommand PreviewCommand { get; }
     public IRelayCommand DoubleClickCommand { get; }
-    
+
     public IRelayCommand ToggleSizeColumnCommand { get; }
     public IRelayCommand ToggleTypeColumnCommand { get; }
     public IRelayCommand ToggleCreatedAtColumnCommand { get; }
     public IRelayCommand ToggleModifiedAtColumnCommand { get; }
     public IRelayCommand ToggleCreatedByColumnCommand { get; }
     public IRelayCommand ToggleModifiedByColumnCommand { get; }
-    
+
     public IRelayCommand TestColumnCommand { get; }
 
     public MainViewModel()
@@ -234,20 +236,20 @@ public class MainViewModel : ObservableObject
             .Build();
 
         string serverUrl = configuration["ServerConnection:GrpcUrl"] ?? "https://localhost:7121";
-        
+
         PropertyChanged += OnPropertyChanged;
-        
+
         var httpHandler = new HttpClientHandler();
-        httpHandler.ServerCertificateCustomValidationCallback = 
+        httpHandler.ServerCertificateCustomValidationCallback =
             HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-            
+
         _channel = GrpcChannel.ForAddress(serverUrl, new GrpcChannelOptions
         {
             HttpHandler = httpHandler,
             HttpVersion = new Version(2, 0)
         });
         _client = new FileService.FileServiceClient(_channel);
-        
+
         LoginCommand = new AsyncRelayCommand(LoginAsync);
         LogoutCommand = new AsyncRelayCommand(LogoutAsync);
         UploadCommand = new AsyncRelayCommand(UploadFileAsync, () => IsLoggedIn && !IsOperationInProgress);
@@ -255,20 +257,21 @@ public class MainViewModel : ObservableObject
         DeleteCommand = new AsyncRelayCommand(DeleteFileAsync, () => IsLoggedIn && SelectedFile != null && !IsOperationInProgress);
         SyncFolderCommand = new AsyncRelayCommand(SyncFolderAsync, () => IsLoggedIn && !IsOperationInProgress);
         PreviewCommand = new AsyncRelayCommand(PreviewFileAsync, () => IsLoggedIn && SelectedFile != null && !IsOperationInProgress);
-        DoubleClickCommand = new AsyncRelayCommand<FileItem>(async (file) => 
+        DoubleClickCommand = new AsyncRelayCommand<FileItem>(async (file) =>
         {
             SelectedFile = file;
             await PreviewFileAsync();
         }, (file) => IsLoggedIn && file != null && !IsOperationInProgress);
-        
+
         ToggleSizeColumnCommand = new RelayCommand(() => ShowSizeColumn = !ShowSizeColumn);
         ToggleTypeColumnCommand = new RelayCommand(() => ShowTypeColumn = !ShowTypeColumn);
         ToggleCreatedAtColumnCommand = new RelayCommand(() => ShowCreatedAtColumn = !ShowCreatedAtColumn);
         ToggleModifiedAtColumnCommand = new RelayCommand(() => ShowModifiedAtColumn = !ShowModifiedAtColumn);
         ToggleCreatedByColumnCommand = new RelayCommand(() => ShowCreatedByColumn = !ShowCreatedByColumn);
         ToggleModifiedByColumnCommand = new RelayCommand(() => ShowModifiedByColumn = !ShowModifiedByColumn);
-        
-        TestColumnCommand = new RelayCommand(() => {
+
+        TestColumnCommand = new RelayCommand(() =>
+        {
             StatusMessage = $"Test: Size={ShowSizeColumn}, Type={ShowTypeColumn}, CreatedAt={ShowCreatedAtColumn}, ModifiedAt={ShowModifiedAtColumn}, CreatedBy={ShowCreatedByColumn}, ModifiedBy={ShowModifiedByColumn}";
         });
     }
@@ -291,21 +294,21 @@ public class MainViewModel : ObservableObject
         {
             IsOperationInProgress = true;
             StatusMessage = "Logging in...";
-            
+
             var request = new LoginRequest
             {
                 Username = Username,
-                Password = Password 
+                Password = Password
             };
-            
+
             var response = await _client.LoginAsync(request);
-            
+
             if (response.Success)
             {
                 _token = response.Token;
                 IsLoggedIn = true;
                 StatusMessage = "Logged in successfully";
-                
+
                 await RefreshFilesAsync();
             }
             else
@@ -329,20 +332,20 @@ public class MainViewModel : ObservableObject
         {
             IsOperationInProgress = true;
             StatusMessage = "Logging out...";
-            
+
             if (string.IsNullOrEmpty(_token))
             {
                 IsLoggedIn = false;
                 return;
             }
-            
+
             var request = new LogoutRequest
             {
                 Token = _token
             };
-            
+
             var response = await _client.LogoutAsync(request);
-            
+
             if (response.Success)
             {
                 _token = null;
@@ -369,15 +372,15 @@ public class MainViewModel : ObservableObject
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token))
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
             StatusMessage = "Loading files...";
-            
+
             string fileTypeFilter = SelectedFileTypeFilter == "All Files" ? string.Empty : SelectedFileTypeFilter;
             string sortBy = SelectedSortOption.Replace(" ", "").ToLower();
-            
+
             var request = new ListFilesRequest
             {
                 Token = _token,
@@ -386,9 +389,9 @@ public class MainViewModel : ObservableObject
                 SortBy = sortBy,
                 Ascending = SortAscending
             };
-            
+
             var response = await _client.ListFilesAsync(request);
-            
+
             Files.Clear();
             foreach (var fileInfo in response.Files)
             {
@@ -405,7 +408,7 @@ public class MainViewModel : ObservableObject
                     ModifiedBy = fileInfo.ModifiedBy
                 });
             }
-            
+
             StatusMessage = $"Loaded {Files.Count} files";
         }
         catch (Exception ex)
@@ -422,27 +425,27 @@ public class MainViewModel : ObservableObject
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token))
             return;
-            
+
         var openFileDialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Select File to Upload",
             Filter = "All Files (*.*)|*.*|C++ Files (*.cpp)|*.cpp|PNG Files (*.png)|*.png",
             Multiselect = false
         };
-        
+
         if (openFileDialog.ShowDialog() != true)
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
             string filePath = openFileDialog.FileName;
             string fileName = Path.GetFileName(filePath);
-            
+
             StatusMessage = $"Checking for conflicts: {fileName}...";
-            
+
             using var fileStream = File.OpenRead(filePath);
-            
+
             var conflictRequest = new CheckFileConflictRequest
             {
                 Token = _token,
@@ -450,23 +453,23 @@ public class MainViewModel : ObservableObject
                 FolderPath = "/",
                 FileSize = fileStream.Length
             };
-            
+
             var conflictResponse = await _client.CheckFileConflictAsync(conflictRequest);
-            
+
             bool overwriteExisting = false;
             string? overwriteFileId = null;
             string finalFileName = fileName;
-            
+
             if (conflictResponse.HasConflict)
             {
                 var conflictResult = ShowConflictDialog(fileName, conflictResponse.ConflictingFiles);
-                
+
                 if (conflictResult.Action == ConflictAction.Cancel)
                 {
                     StatusMessage = "Upload cancelled";
                     return;
                 }
-                
+
                 if (conflictResult.Action == ConflictAction.Overwrite && !string.IsNullOrEmpty(conflictResult.OverwriteFileId))
                 {
                     overwriteExisting = true;
@@ -477,11 +480,11 @@ public class MainViewModel : ObservableObject
                     finalFileName = GenerateUniqueFileName(fileName);
                 }
             }
-            
+
             StatusMessage = $"Uploading {finalFileName}...";
-            
+
             using var call = _client.UploadFile();
-            
+
             await call.RequestStream.WriteAsync(new FileUploadRequest
             {
                 Metadata = new FileMetadata
@@ -494,11 +497,11 @@ public class MainViewModel : ObservableObject
                 OverwriteExisting = overwriteExisting,
                 OverwriteFileId = overwriteFileId ?? string.Empty
             });
-            
+
             byte[] buffer = new byte[64 * 1024];
             int bytesRead;
             long totalBytesRead = 0;
-            
+
             fileStream.Position = 0;
             while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
             {
@@ -506,15 +509,15 @@ public class MainViewModel : ObservableObject
                 {
                     ChunkData = Google.Protobuf.ByteString.CopyFrom(buffer, 0, bytesRead)
                 });
-                
+
                 totalBytesRead += bytesRead;
                 ProgressValue = (int)((double)totalBytesRead / fileStream.Length * 100);
             }
-            
+
             await call.RequestStream.CompleteAsync();
-            
+
             var response = await call;
-            
+
             if (response.Success)
             {
                 StatusMessage = $"File uploaded successfully. ID: {response.FileId}";
@@ -539,11 +542,11 @@ public class MainViewModel : ObservableObject
     private FileConflictResult ShowConflictDialog(string fileName, IEnumerable<ConflictingFile> conflictingFiles)
     {
         var conflictingFilesList = conflictingFiles.ToList();
-        
+
         var dialogBuilder = new System.Text.StringBuilder();
         dialogBuilder.AppendLine($"A file with the name '{fileName}' already exists!");
         dialogBuilder.AppendLine();
-        
+
         if (conflictingFilesList.Count == 1)
         {
             var existing = conflictingFilesList[0];
@@ -558,13 +561,13 @@ public class MainViewModel : ObservableObject
             dialogBuilder.AppendLine("Yes = Replace existing file");
             dialogBuilder.AppendLine("No = Keep both files (rename new file)");
             dialogBuilder.AppendLine("Cancel = Cancel upload");
-            
+
             var result = System.Windows.MessageBox.Show(
                 dialogBuilder.ToString(),
                 "File Conflict",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Question);
-                
+
             return result switch
             {
                 MessageBoxResult.Yes => new FileConflictResult { Action = ConflictAction.Overwrite, OverwriteFileId = existing.Id },
@@ -586,13 +589,13 @@ public class MainViewModel : ObservableObject
             dialogBuilder.AppendLine("Cancel = Cancel upload");
             dialogBuilder.AppendLine();
             dialogBuilder.AppendLine("Note: To replace a specific file, cancel and try again with a different approach.");
-            
+
             var result = System.Windows.MessageBox.Show(
                 dialogBuilder.ToString(),
                 "File Conflict - Multiple Files",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Question);
-                
+
             return result switch
             {
                 MessageBoxResult.OK => new FileConflictResult { Action = ConflictAction.KeepBoth },
@@ -607,13 +610,13 @@ public class MainViewModel : ObservableObject
         var nameWithoutExtension = Path.GetFileNameWithoutExtension(originalFileName);
         var counter = 1;
         string newFileName;
-        
+
         do
         {
             newFileName = $"{nameWithoutExtension} ({counter}){extension}";
             counter++;
         } while (counter < 100 && Files.Any(f => f.Name.Equals(newFileName, StringComparison.OrdinalIgnoreCase)));
-        
+
         return newFileName;
     }
 
@@ -634,38 +637,38 @@ public class MainViewModel : ObservableObject
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token) || SelectedFile == null)
             return;
-            
+
         var saveFileDialog = new Microsoft.Win32.SaveFileDialog
         {
             Title = "Save File",
             FileName = SelectedFile.Name,
             Filter = "All Files (*.*)|*.*"
         };
-        
+
         if (saveFileDialog.ShowDialog() != true)
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
             StatusMessage = $"Downloading {SelectedFile.Name}...";
-            
+
             var request = new FileDownloadRequest
             {
                 Token = _token,
                 FileId = SelectedFile.Id
             };
-            
+
             using var call = _client.DownloadFile(request);
             using var fileStream = File.Create(saveFileDialog.FileName);
-            
+
             FileMetadata? metadata = null;
             long totalBytesReceived = 0;
-            
+
             while (await call.ResponseStream.MoveNext())
             {
                 var response = call.ResponseStream.Current;
-                
+
                 if (response.DataCase == FileDownloadResponse.DataOneofCase.Metadata)
                 {
                     metadata = response.Metadata;
@@ -673,7 +676,7 @@ public class MainViewModel : ObservableObject
                 else if (response.DataCase == FileDownloadResponse.DataOneofCase.ChunkData)
                 {
                     await fileStream.WriteAsync(response.ChunkData.ToByteArray());
-                    
+
                     if (metadata != null)
                     {
                         totalBytesReceived += response.ChunkData.Length;
@@ -681,7 +684,7 @@ public class MainViewModel : ObservableObject
                     }
                 }
             }
-            
+
             StatusMessage = $"File downloaded successfully to {saveFileDialog.FileName}";
         }
         catch (Exception ex)
@@ -699,29 +702,29 @@ public class MainViewModel : ObservableObject
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token) || SelectedFile == null)
             return;
-            
+
         var result = System.Windows.MessageBox.Show(
             $"Are you sure you want to delete '{SelectedFile.Name}'?",
             "Confirm Delete",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
-            
+
         if (result != MessageBoxResult.Yes)
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
             StatusMessage = $"Deleting {SelectedFile.Name}...";
-            
+
             var request = new DeleteFileRequest
             {
                 Token = _token,
                 FileId = SelectedFile.Id
             };
-            
+
             var response = await _client.DeleteFileAsync(request);
-            
+
             if (response.Success)
             {
                 StatusMessage = $"File '{SelectedFile.Name}' deleted successfully";
@@ -746,17 +749,17 @@ public class MainViewModel : ObservableObject
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token))
             return;
-            
+
         var folderDialog = new System.Windows.Forms.FolderBrowserDialog
         {
             Description = "Select a folder to synchronize",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = true
         };
-        
+
         if (folderDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
@@ -764,6 +767,8 @@ public class MainViewModel : ObservableObject
             ProgressValue = 0;
 
             await PerformClientDrivenSync(folderDialog.SelectedPath, "/");
+
+            StartWatching(folderDialog.SelectedPath);
         }
         catch (Exception ex)
         {
@@ -787,48 +792,48 @@ public class MainViewModel : ObservableObject
         try
         {
             StatusMessage = "Getting server file list...";
-            
+
             var serverFilesRequest = new GetSyncFileListRequest
             {
                 Token = _token!,
                 RemoteFolderPath = remoteFolderPath
             };
-            
+
             var serverFilesResponse = await _client.GetSyncFileListAsync(serverFilesRequest);
             var serverFiles = serverFilesResponse.Files.ToList();
-            
+
             StatusMessage = $"Found {serverFiles.Count} files on server";
-            
+
             var localFiles = Directory.GetFiles(localFolderPath, "*.*", SearchOption.AllDirectories)
                 .Select(f => new System.IO.FileInfo(f))
                 .ToList();
-                
+
             StatusMessage = $"Found {localFiles.Count} local files";
-            
+
             int totalOperations = localFiles.Count + serverFiles.Count;
             int currentOperation = 0;
             int syncedCount = 0;
-            
+
             StatusMessage = "Uploading local files to server...";
-            
+
             foreach (var localFile in localFiles)
             {
                 currentOperation++;
                 ProgressValue = (int)((double)currentOperation / totalOperations * 50);
-                
+
                 string relativePath = Path.GetRelativePath(localFolderPath, localFile.DirectoryName ?? string.Empty);
                 string remoteRelativePath = Path.Combine(remoteFolderPath, relativePath).Replace('\\', '/');
                 if (remoteRelativePath.EndsWith("/") && remoteRelativePath.Length > 1)
                 {
                     remoteRelativePath = remoteRelativePath[..^1];
                 }
-                
-                var serverFile = serverFiles.FirstOrDefault(sf => 
-                    sf.Name == localFile.Name && 
+
+                var serverFile = serverFiles.FirstOrDefault(sf =>
+                    sf.Name == localFile.Name &&
                     sf.Path == remoteRelativePath);
-                
+
                 bool shouldUpload = false;
-                
+
                 if (serverFile == null)
                 {
                     shouldUpload = true;
@@ -841,16 +846,16 @@ public class MainViewModel : ObservableObject
                         shouldUpload = true;
                     }
                 }
-                
+
                 if (shouldUpload)
                 {
                     StatusMessage = $"Uploading: {localFile.Name}";
-                    
+
                     try
                     {
                         using var fileStream = localFile.OpenRead();
                         using var call = _client.SyncUploadFile();
-                        
+
                         await call.RequestStream.WriteAsync(new SyncFileUploadRequest
                         {
                             Metadata = new SyncFileMetadata
@@ -862,10 +867,10 @@ public class MainViewModel : ObservableObject
                                 LocalModifiedAt = localFile.LastWriteTimeUtc.ToString("o")
                             }
                         });
-                        
+
                         byte[] buffer = new byte[64 * 1024];
                         int bytesRead;
-                        
+
                         while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
                         {
                             await call.RequestStream.WriteAsync(new SyncFileUploadRequest
@@ -873,10 +878,10 @@ public class MainViewModel : ObservableObject
                                 ChunkData = Google.Protobuf.ByteString.CopyFrom(buffer, 0, bytesRead)
                             });
                         }
-                        
+
                         await call.RequestStream.CompleteAsync();
                         var response = await call;
-                        
+
                         if (response.Success)
                         {
                             syncedCount++;
@@ -897,17 +902,17 @@ public class MainViewModel : ObservableObject
                     StatusMessage = $"Skipped: {localFile.Name} (up to date)";
                 }
             }
-            
+
             StatusMessage = "Downloading server files...";
-            
+
             foreach (var serverFile in serverFiles)
             {
                 currentOperation++;
                 ProgressValue = 50 + (int)((double)(currentOperation - localFiles.Count) / serverFiles.Count * 50);
-                
+
                 string localRelativePath = serverFile.Path.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
                 string localFilePath;
-                
+
                 if (string.IsNullOrEmpty(localRelativePath) || localRelativePath == ".")
                 {
                     localFilePath = Path.Combine(localFolderPath, serverFile.Name);
@@ -916,16 +921,16 @@ public class MainViewModel : ObservableObject
                 {
                     localFilePath = Path.Combine(localFolderPath, localRelativePath, serverFile.Name);
                 }
-                
+
                 string localFileDir = Path.GetDirectoryName(localFilePath) ?? localFolderPath;
-                
+
                 if (!Directory.Exists(localFileDir))
                 {
                     Directory.CreateDirectory(localFileDir);
                 }
-                
+
                 bool shouldDownload = false;
-                
+
                 if (!File.Exists(localFilePath))
                 {
                     shouldDownload = true;
@@ -939,11 +944,11 @@ public class MainViewModel : ObservableObject
                         shouldDownload = true;
                     }
                 }
-                
+
                 if (shouldDownload)
                 {
                     StatusMessage = $"Downloading: {serverFile.Name}";
-                    
+
                     try
                     {
                         var downloadRequest = new FileDownloadRequest
@@ -951,23 +956,23 @@ public class MainViewModel : ObservableObject
                             Token = _token!,
                             FileId = serverFile.FileId
                         };
-                        
+
                         using var call = _client.DownloadFile(downloadRequest);
                         using var fileStream = File.Create(localFilePath);
-                        
+
                         while (await call.ResponseStream.MoveNext())
                         {
                             var response = call.ResponseStream.Current;
-                            
+
                             if (response.DataCase == FileDownloadResponse.DataOneofCase.ChunkData)
                             {
                                 await fileStream.WriteAsync(response.ChunkData.ToByteArray());
                             }
                         }
-                        
+
                         DateTime serverModifiedAt = DateTime.Parse(serverFile.ModifiedAt);
                         File.SetLastWriteTimeUtc(localFilePath, serverModifiedAt);
-                        
+
                         syncedCount++;
                         StatusMessage = $"Downloaded: {serverFile.Name}";
                     }
@@ -981,17 +986,17 @@ public class MainViewModel : ObservableObject
                     StatusMessage = $"Skipped: {serverFile.Name} (up to date)";
                 }
             }
-            
+
             ProgressValue = 100;
             StatusMessage = $"Synchronization completed! Synced {syncedCount} files.";
-            
+
             System.Windows.MessageBox.Show(
                 $"Successfully synchronized {syncedCount} files between the server and {localFolderPath}",
                 "Synchronization Complete",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information
             );
-            
+
             await RefreshFilesAsync();
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
@@ -1006,6 +1011,21 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    private void StartWatching(string localFolderPath)
+    {
+        if (_watchedFolderPath == localFolderPath) return;
+
+        _folderWatcher?.Dispose();
+        _watchedFolderPath = localFolderPath;
+
+        _folderWatcher = new LocalFolderWatcher(localFolderPath,
+            msg => System.Diagnostics.Debug.WriteLine($"[watcher] {msg}"));
+
+        _folderWatcher.FolderChanged += async (_, _) =>
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+                await PerformClientDrivenSync(localFolderPath, "/"));
+    }
+
     private async Task PerformLegacySync(string localFolderPath, string remoteFolderPath)
     {
         var request = new SyncFolderRequest
@@ -1014,24 +1034,24 @@ public class MainViewModel : ObservableObject
             LocalFolderPath = localFolderPath,
             RemoteFolderPath = remoteFolderPath
         };
-        
+
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromMinutes(30));
-        
+
         using var call = _client.SynchronizeFolder(request, cancellationToken: cts.Token);
-        
+
         int filesSynced = 0;
-        
+
         try
         {
             while (await call.ResponseStream.MoveNext(cts.Token))
             {
                 var response = call.ResponseStream.Current;
-                
+
                 if (response.Status == SyncFolderResponse.Types.SyncStatus.Syncing)
                 {
                     string progressDetail = "";
-                    
+
                     if (response.Message.Contains("Phase 1:"))
                     {
                         progressDetail = "Phase 1: Uploading local files to server";
@@ -1060,12 +1080,12 @@ public class MainViewModel : ObservableObject
                     {
                         progressDetail = "Synchronizing files";
                     }
-                    
+
                     StatusMessage = $"{progressDetail}: {response.Message}";
                     filesSynced = response.FilesSynced;
-                    
-                    ProgressValue = response.TotalFiles > 0 
-                        ? (int)((double)response.FilesProcessed / response.TotalFiles * 100) 
+
+                    ProgressValue = response.TotalFiles > 0
+                        ? (int)((double)response.FilesProcessed / response.TotalFiles * 100)
                         : 0;
                 }
                 else if (response.Status == SyncFolderResponse.Types.SyncStatus.Completed)
@@ -1073,7 +1093,7 @@ public class MainViewModel : ObservableObject
                     StatusMessage = $"Synchronization completed. Synced {response.FilesSynced} files.";
                     filesSynced = response.FilesSynced;
                     ProgressValue = 100;
-                    
+
                     await RefreshFilesAsync();
                     break;
                 }
@@ -1083,7 +1103,7 @@ public class MainViewModel : ObservableObject
                     break;
                 }
             }
-            
+
             if (filesSynced > 0)
             {
                 System.Windows.MessageBox.Show(
@@ -1115,32 +1135,32 @@ public class MainViewModel : ObservableObject
             );
         }
     }
-    
+
     private async Task PreviewFileAsync()
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token) || SelectedFile == null)
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
             StatusMessage = $"Loading preview for {SelectedFile.Name}...";
-            
+
             var request = new FileDownloadRequest
             {
                 Token = _token,
                 FileId = SelectedFile.Id
             };
-            
+
             using var call = _client.DownloadFile(request);
             using var memoryStream = new MemoryStream();
-            
+
             FileMetadata? metadata = null;
-            
+
             while (await call.ResponseStream.MoveNext())
             {
                 var response = call.ResponseStream.Current;
-                
+
                 if (response.DataCase == FileDownloadResponse.DataOneofCase.Metadata)
                 {
                     metadata = response.Metadata;
@@ -1148,20 +1168,20 @@ public class MainViewModel : ObservableObject
                 else if (response.DataCase == FileDownloadResponse.DataOneofCase.ChunkData)
                 {
                     await memoryStream.WriteAsync(response.ChunkData.ToByteArray());
-                    
+
                     if (metadata != null)
                     {
                         ProgressValue = (int)((double)memoryStream.Length / metadata.TotalSize * 100);
                     }
                 }
             }
-            
+
             memoryStream.Position = 0;
-            
+
             var previewWindow = new FilePreviewWindow(SelectedFile, memoryStream.ToArray());
             previewWindow.Owner = System.Windows.Application.Current.MainWindow;
             previewWindow.ShowDialog();
-            
+
             StatusMessage = $"Preview loaded for {SelectedFile.Name}";
         }
         catch (Exception ex)
@@ -1179,21 +1199,21 @@ public class MainViewModel : ObservableObject
     {
         if (!IsLoggedIn || string.IsNullOrEmpty(_token) || IsOperationInProgress)
             return;
-            
+
         try
         {
             IsOperationInProgress = true;
-            
+
             foreach (var filePath in files)
             {
                 if (File.Exists(filePath))
                 {
                     string fileName = Path.GetFileName(filePath);
-                    
+
                     StatusMessage = $"Checking for conflicts: {fileName}...";
-                    
+
                     using var fileStream = File.OpenRead(filePath);
-                    
+
                     var conflictRequest = new CheckFileConflictRequest
                     {
                         Token = _token,
@@ -1201,23 +1221,23 @@ public class MainViewModel : ObservableObject
                         FolderPath = "/",
                         FileSize = fileStream.Length
                     };
-                    
+
                     var conflictResponse = await _client.CheckFileConflictAsync(conflictRequest);
-                    
+
                     bool overwriteExisting = false;
                     string? overwriteFileId = null;
                     string finalFileName = fileName;
-                    
+
                     if (conflictResponse.HasConflict)
                     {
                         var conflictResult = ShowConflictDialog(fileName, conflictResponse.ConflictingFiles);
-                        
+
                         if (conflictResult.Action == ConflictAction.Cancel)
                         {
                             StatusMessage = $"Upload of {fileName} cancelled";
                             continue;
                         }
-                        
+
                         if (conflictResult.Action == ConflictAction.Overwrite && !string.IsNullOrEmpty(conflictResult.OverwriteFileId))
                         {
                             overwriteExisting = true;
@@ -1228,11 +1248,11 @@ public class MainViewModel : ObservableObject
                             finalFileName = GenerateUniqueFileName(fileName);
                         }
                     }
-                    
+
                     StatusMessage = $"Uploading {finalFileName}...";
-                    
+
                     using var call = _client.UploadFile();
-                    
+
                     await call.RequestStream.WriteAsync(new FileUploadRequest
                     {
                         Metadata = new FileMetadata
@@ -1245,11 +1265,11 @@ public class MainViewModel : ObservableObject
                         OverwriteExisting = overwriteExisting,
                         OverwriteFileId = overwriteFileId ?? string.Empty
                     });
-                    
-                    byte[] buffer = new byte[64 * 1024]; 
+
+                    byte[] buffer = new byte[64 * 1024];
                     int bytesRead;
                     long totalBytesRead = 0;
-                    
+
                     fileStream.Position = 0;
                     while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
                     {
@@ -1257,15 +1277,15 @@ public class MainViewModel : ObservableObject
                         {
                             ChunkData = Google.Protobuf.ByteString.CopyFrom(buffer, 0, bytesRead)
                         });
-                        
+
                         totalBytesRead += bytesRead;
                         ProgressValue = (int)((double)totalBytesRead / fileStream.Length * 100);
                     }
-                    
+
                     await call.RequestStream.CompleteAsync();
-                    
+
                     var response = await call;
-                    
+
                     if (!response.Success)
                     {
                         StatusMessage = $"Upload failed: {response.ErrorMessage}";
@@ -1273,7 +1293,7 @@ public class MainViewModel : ObservableObject
                     }
                 }
             }
-            
+
             StatusMessage = "Files uploaded successfully";
             await RefreshFilesAsync();
         }
@@ -1287,8 +1307,8 @@ public class MainViewModel : ObservableObject
             IsOperationInProgress = false;
         }
     }
-    
-    
+
+
     private class FileConflictResult
     {
         public ConflictAction Action { get; set; }
@@ -1302,12 +1322,12 @@ public class MainViewModel : ObservableObject
         KeepBoth
     }
 
-    
+
     public string? GetCurrentToken()
     {
         return _token;
     }
-    
+
     public FileService.FileServiceClient GetGrpcClient()
     {
         return _client;
